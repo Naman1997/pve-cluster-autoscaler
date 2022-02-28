@@ -1,0 +1,18 @@
+name: Yaml Check
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: YAML Lint
+        uses: ibiqlik/action-yamllint@v3.1.0
+        with:
+          # File(s) or Directory, separate by space if multiple files or folder are specified
+          file_or_dir: autoscaler
