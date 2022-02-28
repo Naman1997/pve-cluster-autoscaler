@@ -16,4 +16,4 @@ jobs:
         with:
           # File(s) or Directory, separate by space if multiple files or folder are specified
           file_or_dir: autoscaler
-          config_file: .github/workflows/
+          config_file: .github/workflows/yaml-lint.conf
