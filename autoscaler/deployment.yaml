@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+      matchLabels:
+        name: demo
+  template:
+    metadata:
+      labels:
+        name: demo
+    spec:
+      serviceAccountName: demo
+      containers:
+      - name: demo
+        image: namanarora/pve-cluster-autoscaler:latest
