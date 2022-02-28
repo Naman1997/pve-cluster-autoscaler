@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: demo
+  name: pve-cluster-autoscaler
   namespace: default
 spec:
   replicas: 1
   selector:
       matchLabels:
-        name: demo
+        name: pve-cluster-autoscaler
   template:
     metadata:
       labels:
-        name: demo
+        name: pve-cluster-autoscaler
     spec:
-      serviceAccountName: demo
+      serviceAccountName: pve-cluster-autoscaler-sa
       containers:
-      - name: demo
+      - name: pve-cluster-autoscaler
         image: namanarora/pve-cluster-autoscaler:latest

@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	// Uncomment to load all auth plugins
-	// _ "k8s.io/client-go/plugin/pkg/client/auth"
+	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func main() {
@@ -24,28 +22,32 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+
+	mc, err := metrics.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
 	for {
-		// get pods in all the namespaces by omitting namespace
-		// Or specify namespace to get pods in particular namespace
-		pods, err := clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+
+		//Get all nodes
+		nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			panic(err.Error())
 		}
-		fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
 
-		// Examples for error handling:
-		// - Use helper functions e.g. errors.IsNotFound()
-		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-		firstPod := pods.Items[0].Name
-		_, err = clientset.CoreV1().Pods("default").Get(context.TODO(), firstPod, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			fmt.Printf("Pod %s not found in default namespace\n", firstPod)
-		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			fmt.Printf("Error getting pod %v\n", statusError.ErrStatus.Message)
-		} else if err != nil {
-			panic(err.Error())
-		} else {
-			fmt.Printf("Found %s pod in default namespace\n", firstPod)
+		// Loop through all nodes and find allocatable cpu & mem
+		for node_index := range nodes.Items {
+			name := nodes.Items[node_index].Name
+			total_cpu := nodes.Items[node_index].Status.Allocatable.Cpu().MilliValue()
+			total_mem := nodes.Items[node_index].Status.Allocatable.Memory()
+			metric_values, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), name, metav1.GetOptions{})
+			if err != nil {
+				panic(err.Error())
+			}
+			used_mem := metric_values.Usage.Memory()
+			used_cpu := metric_values.Usage.Cpu().MilliValue()
+			fmt.Printf("Node %s is using %s/%s mem and %d/%d cpu\n", name, used_mem, total_mem, used_cpu, total_cpu)
 		}
 
 		time.Sleep(10 * time.Second)
