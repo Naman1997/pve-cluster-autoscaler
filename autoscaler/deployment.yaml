@@ -32,3 +32,6 @@ spec:
       - name: proxmox-secrets
         secret:
           secretName: proxmox-secrets
+      - name: cloud-init
+        configMap:
+          name: cloud-init

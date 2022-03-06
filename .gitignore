@@ -1,4 +1,5 @@
 rebuild.sh
 test.yaml
 test.json
-autoscaler/test-env.yaml
+autoscaler/test-*.yaml
+src/services

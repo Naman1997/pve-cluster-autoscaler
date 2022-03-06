@@ -19,7 +19,7 @@ import (
 func main() {
 	config := services.CreateVMClone()
 	for {
-
+		time.Sleep(10 * time.Second)
 		log.Println("CPU: ", config.QemuCpu)
 		log.Println("Vcpus: ", config.QemuVcpus)
 		log.Println("Memory: ", config.Memory)
@@ -28,7 +28,7 @@ func main() {
 		log.Println("FullClone", config.FullClone)
 		log.Println("Nameserver", config.Nameserver)
 		log.Println("QemuKVM", config.QemuKVM)
-		time.Sleep(10 * time.Second)
+		log.Println("VGA: ", config.QemuVga)
 	}
 	// // creates the in-cluster config
 	// config, err := rest.InClusterConfig()

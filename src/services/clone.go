@@ -37,6 +37,11 @@ func CreateVMClone() *proxmox.ConfigQemu {
 		log.Fatalf("Cloud-Init config not found")
 	}
 	config, err := proxmox.NewConfigQemuFromJson(bytes.NewReader(value))
+	vga := proxmox.QemuDevice{
+		"type":   "std",
+		"memory": 128,
+	}
+	config.QemuVga = vga
 	FailError(err)
 	log.Println("Looking for template: " + templateName)
 	sourceVmrs, err := c.GetVmRefsByName(templateName)
