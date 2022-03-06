@@ -1,8 +1,7 @@
 FROM golang:1.17 as builder
 WORKDIR /app
-COPY src/go.* ./
+COPY src/ ./
 RUN go mod download
-COPY src/main.go ./
 RUN go build -a -installsuffix cgo -o app .
 
 FROM debian:buster-slim

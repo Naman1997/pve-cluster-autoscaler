@@ -17,3 +17,24 @@ spec:
       containers:
       - name: pve-cluster-autoscaler
         image: namanarora/pve-cluster-autoscaler:latest
+        volumeMounts:
+          - name: proxmox-secrets
+            mountPath: "/etc/secrets"
+            readOnly: true
+          - name: cloud-init
+            mountPath: "/etc/cloud"
+            readOnly: true
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+      volumes:
+      - name: proxmox-secrets
+        secret:
+          secretName: proxmox-secrets
+      - name: cloud-init
+        configMap:
+          name: cloud-init
