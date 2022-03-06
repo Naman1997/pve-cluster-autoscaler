@@ -1,73 +1,110 @@
 package main
 
-// "context"
-// "fmt"
-// "time"
-
-// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-// "k8s.io/client-go/kubernetes"
-// "k8s.io/client-go/rest"
-// metrics "k8s.io/metrics/pkg/client/clientset/versioned"
-
 import (
+	"context"
+	"crypto/tls"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
-	"github.com/Naman1997/pve-cluster-autoscaler/services"
+	"github.com/Telmate/proxmox-api-go/proxmox"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func main() {
-	config := services.CreateVMClone()
-	for {
-		time.Sleep(10 * time.Second)
-		log.Println("CPU: ", config.QemuCpu)
-		log.Println("Vcpus: ", config.QemuVcpus)
-		log.Println("Memory: ", config.Memory)
-		log.Println("Storage", config.Storage)
-		log.Println("Sockets", config.QemuSockets)
-		log.Println("FullClone", config.FullClone)
-		log.Println("Nameserver", config.Nameserver)
-		log.Println("QemuKVM", config.QemuKVM)
-		log.Println("VGA: ", config.QemuVga)
+
+	// Validate the proxmox setup
+	timeout, tlsConf, template, node, cpuLimit, memLimit := validateInputs()
+	cloudInitConfig, err := os.ReadFile("/etc/cloud/cloud-init")
+	if err != nil {
+		log.Fatalf("Cloud-Init config not found")
 	}
-	// // creates the in-cluster config
-	// config, err := rest.InClusterConfig()
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
-	// // creates the clientset
-	// clientset, err := kubernetes.NewForConfig(config)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
+	client := CreateClient(tlsConf, "", timeout)
 
-	// mc, err := metrics.NewForConfig(config)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// creates the in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
 
-	// for {
+	mc, err := metrics.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
 
-	// 	//Get all nodes
-	// 	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	// 	if err != nil {
-	// 		panic(err.Error())
-	// 	}
+	for {
 
-	// 	// Loop through all nodes and find allocatable cpu & mem along with usage
-	// 	for node_index := range nodes.Items {
-	// 		name := nodes.Items[node_index].Name
-	// 		total_cpu := nodes.Items[node_index].Status.Allocatable.Cpu().MilliValue()
-	// 		total_mem := nodes.Items[node_index].Status.Allocatable.Memory()
-	// 		metric_values, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), name, metav1.GetOptions{})
-	// 		if err != nil {
-	// 			panic(err.Error())
-	// 		}
-	// 		used_mem := metric_values.Usage.Memory()
-	// 		used_cpu := metric_values.Usage.Cpu().MilliValue()
-	// 		fmt.Printf("Node %s is using %s/%s mem and %d/%d cpu\n", name, used_mem, total_mem, used_cpu, total_cpu)
-	// 	}
+		//Get all nodes
+		nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
 
-	// 	time.Sleep(10 * time.Second)
-	// }
+		// Loop through all nodes and find allocatable cpu & mem along with usage
+		overall_cpu_percentage := 0
+		overall_mem_percentage := 0
+		for node_index := range nodes.Items {
+			name := nodes.Items[node_index].Name
+			total_cpu := nodes.Items[node_index].Status.Allocatable.Cpu().MilliValue()
+			total_mem := nodes.Items[node_index].Status.Allocatable.Memory()
+			metric_values, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), name, metav1.GetOptions{})
+			if err != nil {
+				panic(err.Error())
+			}
+			used_mem := metric_values.Usage.Memory()
+			used_cpu := metric_values.Usage.Cpu().MilliValue()
+			ColorPrint(INFO, "Node %s is using %s/%s mem and %d/%d cpu\n", name, used_mem, total_mem, used_cpu, total_cpu)
+
+			overall_cpu_percentage += int(used_cpu / total_cpu)
+			overall_mem_percentage += int(used_mem.MilliValue() / total_mem.MilliValue())
+
+		}
+
+		overall_cpu_percentage /= nodes.Size()
+		overall_mem_percentage /= nodes.Size()
+		ColorPrint(INFO, "Overall cpu usage: %d and overall mem usage: %d\n", overall_cpu_percentage, overall_mem_percentage)
+
+		if overall_cpu_percentage > cpuLimit || overall_mem_percentage > memLimit {
+			ColorPrint(INFO, "Creating new VM")
+			ColorPrint(INFO, "Using the following params: %s , %s , %s, %s", client.ApiUrl, template, cloudInitConfig, node)
+			// Clone(client, template, cloudInitConfig, node)
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func validateInputs() (int, *tls.Config, string, string, int, int) {
+	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
+	FailError(err)
+	*proxmox.Debug, err = strconv.ParseBool(getValueOf("debug", "false"))
+	FailError(err)
+	taskTimeout, err := strconv.Atoi(getValueOf("taskTimeout", "300"))
+	FailError(err)
+	memoryLimit, err := strconv.Atoi(getValueOf("memoryLimit", ""))
+	FailError(err)
+	cpuLimit, err := strconv.Atoi(getValueOf("cpuLimit", ""))
+	FailError(err)
+	node := getValueOf("nodeName", "")
+	if node == "" {
+		log.Fatal("Node not specified!")
+	}
+	template := getValueOf("templateName", "")
+	if template == "" {
+		log.Fatal("Template not specified!")
+	}
+	tlsconf := &tls.Config{InsecureSkipVerify: true}
+	if !insecure {
+		tlsconf = nil
+	}
+	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit
 }

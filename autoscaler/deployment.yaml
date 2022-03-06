@@ -21,6 +21,9 @@ spec:
           - name: proxmox-secrets
             mountPath: "/etc/secrets"
             readOnly: true
+          - name: cloud-init
+            mountPath: "/etc/cloud"
+            readOnly: true
         resources:
           requests:
             memory: "64Mi"

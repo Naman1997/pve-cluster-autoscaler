@@ -1,7 +1,6 @@
-package services
+package main
 
 import (
-	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -9,7 +8,7 @@ import (
 
 func FailError(err error) {
 	if err != nil {
-		log.Fatal(err)
+		ColorPrint(ERROR, err.Error())
 	}
 }
 
