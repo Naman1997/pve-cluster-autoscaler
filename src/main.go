@@ -15,6 +15,13 @@ import (
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
+/*
+Uses all other functions defined
+in this module to calculate overall
+mem and cpu usage. Creates a new VM
+if any one of the overall thresholds
+are exceeded.
+*/
 func main() {
 
 	// Validate the proxmox setup
@@ -23,7 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Cloud-Init config not found")
 	}
-	client := CreateClient(tlsConf, "", timeout)
+	client := CreateClient(tlsConf, timeout)
 
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
@@ -83,6 +90,11 @@ func main() {
 	}
 }
 
+/*
+validateInputs validates that all
+required inputs are in place and
+ are using the correct formats.
+*/
 func validateInputs() (int, *tls.Config, string, string, int, int) {
 	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
 	FailError(err)

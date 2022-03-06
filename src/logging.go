@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"os"
 
 	"github.com/fatih/color"
@@ -23,28 +23,28 @@ const (
 /*
 ColorPrint formats and prints the text according
 to the colorText provided. Other options are
-passed over to fmt.Printf to process and
+passed over to log.Printf to process and
 format correctly.
 */
 func ColorPrint(colorText string, text string, option ...interface{}) {
 	if colorText == ERROR {
-		fmt.Printf(color.RedString(colorText)+text, option...)
-		fmt.Println()
+		log.Printf(color.RedString(colorText)+text, option...)
+		log.Println()
 		os.Exit(0)
 	} else if colorText == INFO {
-		fmt.Printf(color.GreenString(colorText))
+		log.Printf(color.GreenString(colorText))
 	} else if colorText == WARN {
-		fmt.Printf(color.YellowString(colorText))
+		log.Printf(color.YellowString(colorText))
 	} else if colorText == INPUT {
-		fmt.Printf(color.BlueString(colorText))
+		log.Printf(color.BlueString(colorText))
 	} else {
-		fmt.Printf(colorText+text, option...)
-		fmt.Println()
+		log.Printf(colorText+text, option...)
+		log.Println()
 		return
 	}
 
-	fmt.Printf(text, option...)
+	log.Printf(text, option...)
 	if colorText != INPUT && colorText != ERROR {
-		fmt.Println()
+		log.Println()
 	}
 }
