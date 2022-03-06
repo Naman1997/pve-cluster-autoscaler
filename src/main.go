@@ -83,7 +83,7 @@ func main() {
 		if overall_cpu_percentage > cpuLimit || overall_mem_percentage > memLimit {
 			ColorPrint(INFO, "Creating new VM")
 			ColorPrint(INFO, "Using the following params: %s , %s , %s, %s", client.ApiUrl, template, cloudInitConfig, node)
-			// Clone(client, template, cloudInitConfig, node)
+			Clone(client, template, cloudInitConfig, node)
 		}
 
 		time.Sleep(10 * time.Second)
