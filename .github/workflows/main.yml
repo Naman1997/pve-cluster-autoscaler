@@ -15,5 +15,5 @@ jobs:
         uses: ibiqlik/action-yamllint@v3.1.0
         with:
           # File(s) or Directory, separate by space if multiple files or folder are specified
-          file_or_dir: autoscaler
+          file_or_dir: autoscaler postgresql
           config_file: .github/workflows/yaml-lint.conf

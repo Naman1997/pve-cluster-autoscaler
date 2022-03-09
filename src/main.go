@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
-	"github.com/Telmate/proxmox-api-go/proxmox"
+	"database/sql"
+
+	_ "github.com/lib/pq"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -24,6 +24,8 @@ are exceeded.
 */
 func main() {
 
+	fRun := true
+
 	// Validate the proxmox setup
 	timeout, tlsConf, template, node, cpuLimit, memLimit := validateInputs()
 	cloudInitConfig, err := os.ReadFile("/etc/cloud/cloud-init")
@@ -31,6 +33,9 @@ func main() {
 		log.Fatalf("Cloud-Init config not found")
 	}
 	client := CreateClient(tlsConf, timeout)
+
+	// Validate postgres setup
+	connStr := validatePostgresConfig()
 
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
@@ -80,43 +85,21 @@ func main() {
 		overall_mem_percentage /= nodes.Size()
 		ColorPrint(INFO, "Overall cpu usage: %d and overall mem usage: %d\n", overall_cpu_percentage, overall_mem_percentage)
 
-		if overall_cpu_percentage > cpuLimit || overall_mem_percentage > memLimit {
+		if overall_cpu_percentage > cpuLimit || overall_mem_percentage > memLimit || fRun {
+			fRun = !fRun
 			ColorPrint(INFO, "Creating new VM")
 			ColorPrint(INFO, "Using the following params: %s , %s , %s, %s", client.ApiUrl, template, cloudInitConfig, node)
-			Clone(client, template, cloudInitConfig, node)
+			config, vmr := Clone(client, template, cloudInitConfig, node)
+			db, err := sql.Open("postgres", connStr)
+			FailError(err)
+			err = insertVmInfo(db, vmr, config)
+			// Keep retying to insert row in case of any errors
+			for err != nil {
+				err = insertVmInfo(db, vmr, config)
+				time.Sleep(10 * time.Second)
+			}
+			defer db.Close()
 		}
-
 		time.Sleep(10 * time.Second)
 	}
-}
-
-/*
-validateInputs validates that all
-required inputs are in place and
- are using the correct formats.
-*/
-func validateInputs() (int, *tls.Config, string, string, int, int) {
-	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
-	FailError(err)
-	*proxmox.Debug, err = strconv.ParseBool(getValueOf("debug", "false"))
-	FailError(err)
-	taskTimeout, err := strconv.Atoi(getValueOf("taskTimeout", "300"))
-	FailError(err)
-	memoryLimit, err := strconv.Atoi(getValueOf("memoryLimit", ""))
-	FailError(err)
-	cpuLimit, err := strconv.Atoi(getValueOf("cpuLimit", ""))
-	FailError(err)
-	node := getValueOf("nodeName", "")
-	if node == "" {
-		log.Fatal("Node not specified!")
-	}
-	template := getValueOf("templateName", "")
-	if template == "" {
-		log.Fatal("Template not specified!")
-	}
-	tlsconf := &tls.Config{InsecureSkipVerify: true}
-	if !insecure {
-		tlsconf = nil
-	}
-	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit
 }

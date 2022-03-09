@@ -24,6 +24,9 @@ spec:
           - name: cloud-init
             mountPath: "/etc/cloud"
             readOnly: true
+        envFrom:
+        - configMapRef:
+            name: postgres-db-config
         resources:
           requests:
             memory: "64Mi"
