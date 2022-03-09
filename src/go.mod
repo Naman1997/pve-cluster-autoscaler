@@ -5,6 +5,7 @@ go 1.17
 require (
 	github.com/Telmate/proxmox-api-go v0.0.0-20220129131641-6909b62b8cf0
 	github.com/fatih/color v1.13.0
+	github.com/lib/pq v1.1.1
 	k8s.io/apimachinery v0.23.4
 	k8s.io/client-go v0.23.4
 	k8s.io/metrics v0.23.4

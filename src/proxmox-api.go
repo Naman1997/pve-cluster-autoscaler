@@ -12,7 +12,7 @@ Creates a new clone
 of the provided template and
 configures it according to cloudInitConfig
 */
-func Clone(client *proxmox.Client, template string, cloudInitConfig []byte, node string) *proxmox.VmRef {
+func Clone(client *proxmox.Client, template string, cloudInitConfig []byte, node string) (*proxmox.ConfigQemu, *proxmox.VmRef) {
 	config, err := proxmox.NewConfigQemuFromJson(bytes.NewReader(cloudInitConfig))
 	FailError(err)
 	log.Println("Looking for template: " + template)
@@ -40,8 +40,7 @@ func Clone(client *proxmox.Client, template string, cloudInitConfig []byte, node
 	err = proxmox.WaitForShutdown(vmr, client)
 	FailError(err)
 	log.Println("Completed cloning process")
-	vmr = proxmox.NewVmRef(config.VmID)
-	return vmr
+	return config, vmr
 }
 
 /*
