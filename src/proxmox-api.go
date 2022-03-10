@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"log"
+	"time"
 
 	"github.com/Telmate/proxmox-api-go/proxmox"
 )
@@ -12,8 +14,12 @@ Creates a new clone
 of the provided template and
 configures it according to cloudInitConfig
 */
-func Clone(client *proxmox.Client, template string, cloudInitConfig []byte, node string) (*proxmox.ConfigQemu, *proxmox.VmRef) {
+func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, node string, runAnsiblePlaybook bool) (*proxmox.ConfigQemu, *proxmox.VmRef) {
 	config, err := proxmox.NewConfigQemuFromJson(bytes.NewReader(cloudInitConfig))
+	if runAnsiblePlaybook {
+		// Enable qemu agent - needed for ansible
+		config.Agent = 1
+	}
 	FailError(err)
 	log.Println("Looking for template: " + template)
 	sourceVmrs, err := client.GetVmRefsByName(template)
@@ -47,7 +53,7 @@ func Clone(client *proxmox.Client, template string, cloudInitConfig []byte, node
 Deletes an existing VM
 using its vmid
 */
-func Destroy(client *proxmox.Client, vmid int) {
+func DestroyVM(client *proxmox.Client, vmid int) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
 	ColorPrint(INFO, jbody)
@@ -61,9 +67,11 @@ func Destroy(client *proxmox.Client, vmid int) {
 Starts an existing VM
 using its vmid
 */
-func Start(client *proxmox.Client, vmid int) string {
+func StartVM(client *proxmox.Client, vmid int) string {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StartVm(vmr)
+	FailError(err)
+	err = WaitForPowerOn(vmr, client)
 	FailError(err)
 	return jbody
 }
@@ -72,9 +80,39 @@ func Start(client *proxmox.Client, vmid int) string {
 Stops an existing VM
 using its vmid
 */
-func Stop(client *proxmox.Client, vmid int) string {
+func StopVM(client *proxmox.Client, vmid int) string {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
 	FailError(err)
 	return jbody
+}
+
+func WaitForPowerOn(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
+	for ii := 0; ii < 100; ii++ {
+		vmState, err := client.GetVmState(vmr)
+		if err != nil {
+			log.Print("Wait error:")
+			log.Println(err)
+		} else if vmState["status"] == "running" {
+			return nil
+		}
+		ColorPrint(INFO, "Waiting for VM to power on.")
+		time.Sleep(5 * time.Second)
+	}
+	return errors.New("VM did not start within wait time")
+}
+
+func WaitForQemuAgent(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
+	for ii := 0; ii < 100; ii++ {
+		_, err := client.QemuAgentPing(vmr)
+		if err != nil {
+			log.Print("Wait error:")
+			log.Println(err)
+		} else {
+			return nil
+		}
+		ColorPrint(INFO, "Waiting for qemu agent to start for VM %d.", vmr.VmId())
+		time.Sleep(5 * time.Second)
+	}
+	return errors.New("qemu agent did not start within wait time")
 }
