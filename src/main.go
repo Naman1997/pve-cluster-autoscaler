@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Telmate/proxmox-api-go/proxmox"
+	"github.com/relex/aini"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -25,7 +27,9 @@ are exceeded.
 */
 
 const (
-	REPO_LOCATION = "/root/ansible/"
+	REPO_LOCATION  = "/root/repo/"
+	INVENTORY_PATH = "/root/hosts"
+	SSH_KEY_PATH   = "/etc/ssh/id_rsa"
 )
 
 func main() {
@@ -45,27 +49,19 @@ func main() {
 
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err.Error())
-	}
+	FailError(err)
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+	FailError(err)
 
 	mc, err := metrics.NewForConfig(config)
-	if err != nil {
-		panic(err)
-	}
+	FailError(err)
 
 	for {
 
 		//Get all nodes
 		nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
+		FailError(err)
 
 		// Loop through all nodes and find allocatable cpu & mem along with usage
 		var overall_cpu_percentage, overall_mem_percentage float32 = 0.00, 0.00
@@ -74,9 +70,7 @@ func main() {
 			total_cpu := nodes.Items[node_index].Status.Allocatable.Cpu().MilliValue()
 			total_mem := nodes.Items[node_index].Status.Allocatable.Memory()
 			metric_values, err := mc.MetricsV1beta1().NodeMetricses().Get(context.TODO(), name, metav1.GetOptions{})
-			if err != nil {
-				panic(err.Error())
-			}
+			FailError(err)
 			used_mem := metric_values.Usage.Memory()
 			used_cpu := metric_values.Usage.Cpu().MilliValue()
 			ColorPrint(INFO, "Node %s is using %s/%s mem and %d/%d cpu\n", name, used_mem, total_mem, used_cpu, total_cpu)
@@ -129,27 +123,51 @@ func main() {
 			}
 
 			// Wait for VM to attain an IP address
-			ColorPrint(WARN, "Waiting for the VM to get an IP Address.")
-			time.Sleep(10 * time.Second)
-
-			// Figure out the IP Address assigned to the VM
 			var ipAddress string
-			interfaces, err := client.GetVmAgentNetworkInterfaces(vmr)
-			FailError(err)
-			for _, interfaceData := range interfaces {
-				for index, ipArrd := range interfaceData.IPAddresses {
-					if strings.Contains(interfaceData.Name, "eth") && len(ipAddress) == 0 {
-						ipAddress = ipArrd.String()
+			for len(ipAddress) == 0 {
+				ColorPrint(WARN, "Waiting for the VM to get an IP Address.")
+				time.Sleep(10 * time.Second)
+
+				// Figure out the IP Address assigned to the VM
+				interfaces, err := client.GetVmAgentNetworkInterfaces(vmr)
+				FailError(err)
+				for _, interfaceData := range interfaces {
+					for index, ipArrd := range interfaceData.IPAddresses {
+						// Assuming interface name containse eth
+						if strings.Contains(interfaceData.Name, "eth") && len(ipAddress) == 0 {
+							ipAddress = ipArrd.String()
+						}
+						ColorPrint(INFO, "FOUND IP ADDRESS: %s for INTERFACE: %s on index %d", ipArrd.String(), interfaceData.Name, index)
 					}
-					ColorPrint(INFO, "FOUND IP ADDRESS: %s for INTERFACE: %s on index %d", ipArrd.String(), interfaceData.Name, index)
 				}
 			}
 			ColorPrint(INFO, "Using %s as the IP Address of the created VM", ipAddress)
 
 			// Run ansible playbook(s)
 			if runAnsiblePlaybook {
-				// TODO: Do we need any other interface/ipaddress here?
-				ExecutePlaybook(playbookLocation, ipAddress, ansibleTag)
+				sshUser := getValueOf("sshUser", "admin")
+				generateAnsibleInventory(ipAddress, ansibleTag, config.Name, sshUser)
+				AnsibleGalaxy(REPO_LOCATION + getValueOf("ansibleRequirements", ""))
+				ColorPrint(INFO, "Generating ansible inventory...")
+				time.Sleep(2 * time.Second)
+
+				// Parse the inventory
+				file, err := os.Open(INVENTORY_PATH)
+				FailError(err)
+				inventoryReader := bufio.NewReader(file)
+				_, err = aini.Parse(inventoryReader)
+				for err != nil {
+					ColorPrint(WARN, "There might be an issue with the provided params")
+					ColorPrint(INFO, "Re-generating ansible inventory...")
+					ColorPrint(INFO, "Params provided: [IP ADDRESS: %s] [ANSIBLE TAG: %s] [HOSTNAME: %s] [SSH USER: %s]", ipAddress, ansibleTag, config.Name, sshUser)
+					generateAnsibleInventory(ipAddress, ansibleTag, config.Name, sshUser)
+					time.Sleep(2 * time.Second)
+					inventoryReader = bufio.NewReader(file)
+					_, err = aini.Parse(inventoryReader)
+				}
+
+				// Run the playbook(s) provided
+				AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser)
 			}
 		}
 		time.Sleep(10 * time.Second)

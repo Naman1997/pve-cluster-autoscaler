@@ -47,3 +47,4 @@ spec:
       - name: ssh-privatekey
         secret:
           secretName: ssh-privatekey
+          defaultMode: 384

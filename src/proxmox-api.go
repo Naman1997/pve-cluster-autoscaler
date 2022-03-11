@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"log"
 	"time"
@@ -10,8 +11,7 @@ import (
 )
 
 /*
-Creates a new clone
-of the provided template and
+Creates a new clone of the provided template and
 configures it according to cloudInitConfig
 */
 func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, node string, runAnsiblePlaybook bool) (*proxmox.ConfigQemu, *proxmox.VmRef) {
@@ -49,10 +49,7 @@ func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, no
 	return config, vmr
 }
 
-/*
-Deletes an existing VM
-using its vmid
-*/
+//Deletes an existing VM using its vmid
 func DestroyVM(client *proxmox.Client, vmid int) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
@@ -63,10 +60,7 @@ func DestroyVM(client *proxmox.Client, vmid int) {
 	ColorPrint(INFO, jbody)
 }
 
-/*
-Starts an existing VM
-using its vmid
-*/
+//Starts an existing VM using its vmid
 func StartVM(client *proxmox.Client, vmid int) string {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StartVm(vmr)
@@ -76,10 +70,7 @@ func StartVM(client *proxmox.Client, vmid int) string {
 	return jbody
 }
 
-/*
-Stops an existing VM
-using its vmid
-*/
+//Stops an existing VM using its vmid
 func StopVM(client *proxmox.Client, vmid int) string {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
@@ -87,6 +78,7 @@ func StopVM(client *proxmox.Client, vmid int) string {
 	return jbody
 }
 
+// Wait for VM to power on
 func WaitForPowerOn(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
 	for ii := 0; ii < 100; ii++ {
 		vmState, err := client.GetVmState(vmr)
@@ -102,6 +94,7 @@ func WaitForPowerOn(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
 	return errors.New("VM did not start within wait time")
 }
 
+// Wait for ping success from Qemu Agent
 func WaitForQemuAgent(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
 	for ii := 0; ii < 100; ii++ {
 		_, err := client.QemuAgentPing(vmr)
@@ -115,4 +108,29 @@ func WaitForQemuAgent(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
 		time.Sleep(5 * time.Second)
 	}
 	return errors.New("qemu agent did not start within wait time")
+}
+
+/*
+CreateClient is used to create
+a new client using the provided
+tls config and timeout params and
+the credentials provided to the pod
+via a secret as env vars.
+Proxy is currently not being supported.
+*/
+func CreateClient(tlsconf *tls.Config, taskTimeout int) (client *proxmox.Client) {
+	c, err := proxmox.NewClient(getValueOf("PM_API_URL", ""), nil, tlsconf, "", taskTimeout)
+	FailError(err)
+	if userRequiresAPIToken(getValueOf("PM_USER", "")) {
+		c.SetAPIToken(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""))
+		// As test, get the version of the server
+		_, err := c.GetVersion()
+		if err != nil {
+			log.Fatalf("login error: %s", err)
+		}
+	} else {
+		err = c.Login(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""), getValueOf("PM_OTP", ""))
+		FailError(err)
+	}
+	return c
 }
