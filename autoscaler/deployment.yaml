@@ -37,6 +37,13 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "500m"
+      initContainers:
+      - name: init-postgres
+        image: busybox:latest
+        command: ['sh', '-c', "until nslookup postgres-db-lb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for postgres-db; sleep 2; done"]
+      - name: init-metrics-server
+        image: busybox:latest
+        command: ['sh', '-c', "until nslookup metrics-server.kube-system.svc.cluster.local; do echo waiting for metrics-server; sleep 2; done"]
       volumes:
       - name: proxmox-secrets
         secret:
