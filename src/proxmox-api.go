@@ -61,13 +61,13 @@ func DestroyVM(client *proxmox.Client, vmid int) {
 }
 
 //Starts an existing VM using its vmid
-func StartVM(client *proxmox.Client, vmid int) string {
+func StartVM(client *proxmox.Client, vmid int) (string, error) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StartVm(vmr)
-	FailError(err)
-	err = WaitForPowerOn(vmr, client)
-	FailError(err)
-	return jbody
+	if err != nil {
+		return "", err
+	}
+	return jbody, err
 }
 
 //Stops an existing VM using its vmid

@@ -96,7 +96,7 @@ func main() {
 				runAnsiblePlaybook = true
 				ColorPrint(INFO, "Ansible Tag and Repo were provided in the configuration: %s", ansibleTag)
 				ColorPrint(INFO, "Attempting to configure this new VM with the ansible config provided.")
-				CloneRepo(ansibleRepo)
+				FailError(CloneRepo(ansibleRepo))
 				repoSubFolder := getValueOf("repoSubFolder", "")
 				if len(repoSubFolder) != 0 {
 					playbookLocation = REPO_LOCATION + repoSubFolder
@@ -104,33 +104,53 @@ func main() {
 				}
 			}
 
-			ColorPrint(INFO, "Creating new VM")
+			ColorPrint(INFO, "Creating new VM...")
 			ColorPrint(INFO, "Using the following params: %s , %s , %s, %s", client.ApiUrl, template, cloudInitConfig, node)
 			config, vmr := CloneVM(client, template, cloudInitConfig, node, runAnsiblePlaybook)
 			InsertVmInfo(connStr, vmr, config)
 
 			// Start the VM
-			ColorPrint(INFO, "Attempting to start the VM")
-			res := StartVM(client, vmr.VmId())
+			ColorPrint(INFO, "Attempting to start the VM...")
+			res, err := StartVM(client, vmr.VmId())
 			ColorPrint(INFO, res)
+			for err != nil {
+				ColorPrint(WARN, "Encountered an error while trying to start the VM: %v", err)
+				ColorPrint(INFO, "Attempting to start the VM again...")
+				time.Sleep(10 * time.Second)
+				res, err = StartVM(client, vmr.VmId())
+				ColorPrint(INFO, res)
+			}
+			err = WaitForPowerOn(vmr, client)
+			for err != nil {
+				ColorPrint(WARN, "VM did not start up in the expected time period: %v", err)
+				ColorPrint(INFO, "Attempting to start the VM again...")
+				time.Sleep(10 * time.Second)
+				StartVM(client, vmr.VmId())
+				err = WaitForPowerOn(vmr, client)
+			}
 
 			// Wait for qemu agent to come up
 			err = WaitForQemuAgent(vmr, client)
 			for err != nil {
-				ColorPrint(ERROR, "Qemu Agent not running for VM with id: %d on node %s", vmr.VmId(), vmr.Node())
-				ColorPrint(WARN, "Attempting to wait for qemu agent.")
+				ColorPrint(WARN, "Qemu Agent was not running for VM with id: %d on node %s", vmr.VmId(), vmr.Node())
+				ColorPrint(WARN, "Attempting to wait for qemu agent...")
 				err = WaitForQemuAgent(vmr, client)
 			}
 
 			// Wait for VM to attain an IP address
 			var ipAddress string
 			for len(ipAddress) == 0 {
-				ColorPrint(WARN, "Waiting for the VM to get an IP Address.")
+				ColorPrint(WARN, "Waiting for the VM to get an IP Address...")
 				time.Sleep(10 * time.Second)
 
 				// Figure out the IP Address assigned to the VM
 				interfaces, err := client.GetVmAgentNetworkInterfaces(vmr)
-				FailError(err)
+				for err != nil {
+					ColorPrint(WARN, "Encountered an error while getting the network interfaces: %v", err)
+					ColorPrint(WARN, "Attempting to get the interfaces again...")
+					time.Sleep(10 * time.Second)
+					interfaces, err = client.GetVmAgentNetworkInterfaces(vmr)
+				}
 				for _, interfaceData := range interfaces {
 					for index, ipArrd := range interfaceData.IPAddresses {
 						// Assuming interface name containse eth
@@ -168,6 +188,11 @@ func main() {
 
 				// Run the playbook(s) provided
 				AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser)
+
+				for {
+					time.Sleep(10 * time.Second)
+					ColorPrint(INFO, "Reached TODO point")
+				}
 			}
 		}
 		time.Sleep(10 * time.Second)
