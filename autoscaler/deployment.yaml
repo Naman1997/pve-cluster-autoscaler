@@ -24,6 +24,9 @@ spec:
           - name: cloud-init
             mountPath: "/etc/cloud"
             readOnly: true
+          - name: ssh-privatekey
+            mountPath: "/etc/ssh"
+            readOnly: true
         envFrom:
         - configMapRef:
             name: postgres-db-config
@@ -41,3 +44,7 @@ spec:
       - name: cloud-init
         configMap:
           name: cloud-init
+      - name: ssh-privatekey
+        secret:
+          secretName: ssh-privatekey
+          defaultMode: 384

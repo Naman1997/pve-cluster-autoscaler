@@ -1,53 +1,14 @@
 package main
 
 import (
-	"crypto/tls"
 	"database/sql"
 	"log"
 	"os"
-	"strconv"
+	"time"
 
 	"github.com/Telmate/proxmox-api-go/proxmox"
+	_ "github.com/lib/pq"
 )
-
-/*
-validateInputs validates that all
-required inputs are in place and
- are using the correct formats.
-*/
-func validateInputs() (int, *tls.Config, string, string, int, int) {
-	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
-	FailError(err)
-	*proxmox.Debug, err = strconv.ParseBool(getValueOf("debug", "false"))
-	FailError(err)
-	taskTimeout, err := strconv.Atoi(getValueOf("taskTimeout", "300"))
-	FailError(err)
-	memLimit := getValueOf("memoryLimit", "")
-	if len(memLimit) == 0 {
-		log.Fatal("memoryLimit not specified in config!")
-	}
-	memoryLimit, err := strconv.Atoi(memLimit)
-	FailError(err)
-	cLimit := getValueOf("cpuLimit", "")
-	if len(cLimit) == 0 {
-		log.Fatal("cpuLimit not specified in config!")
-	}
-	cpuLimit, err := strconv.Atoi(cLimit)
-	FailError(err)
-	node := getValueOf("nodeName", "")
-	if len(node) == 0 {
-		log.Fatal("Node name not specified in config!")
-	}
-	template := getValueOf("templateName", "")
-	if len(template) == 0 {
-		log.Fatal("Template name not specified in config!")
-	}
-	tlsconf := &tls.Config{InsecureSkipVerify: true}
-	if !insecure {
-		tlsconf = nil
-	}
-	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit
-}
 
 /*
 validatePostgresConfig validates that
@@ -106,7 +67,24 @@ func createTable(db *sql.DB) error {
 	return err
 }
 
-func insertVmInfo(db *sql.DB, vmr *proxmox.VmRef, config *proxmox.ConfigQemu) error {
+/*
+InsertVmInfo handles insertion of data and retry
+mechanism for postgres db
+*/
+func InsertVmInfo(connStr string, vmr *proxmox.VmRef, config *proxmox.ConfigQemu) {
+	db, err := sql.Open("postgres", connStr)
+	FailError(err)
+	defer db.Close()
+	err = insertDBRecord(db, vmr, config)
+	// Keep retying to insert row in case of any errors
+	for err != nil {
+		err = insertDBRecord(db, vmr, config)
+		time.Sleep(10 * time.Second)
+	}
+}
+
+// Inserts records into postgres
+func insertDBRecord(db *sql.DB, vmr *proxmox.VmRef, config *proxmox.ConfigQemu) error {
 	sqlStatement := `INSERT INTO vms (vmid, node, pool, vmtype, memory, cores) VALUES ($1, $2, $3, $4, $5, $6) RETURNING vmid;`
 	_, err := db.Exec(sqlStatement, vmr.VmId(), vmr.Node(), config.Pool, vmr.GetVmType(), config.Memory, config.QemuCores)
 	if err != nil {
