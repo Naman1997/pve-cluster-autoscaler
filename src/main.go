@@ -213,6 +213,7 @@ func main() {
 				- Check if new node is still attached to cluster
 				- Drain the node [kubectl drain <node-name> --ignore-daemonsets --delete-local-data]
 				- Delete the node from cluster [kubectl delete node <node-name>]
+			4. Breakdown the main function into functions that can be triggered from an endpoint
 			*/
 			for {
 				time.Sleep(RETRY_PERIOD * time.Second)
