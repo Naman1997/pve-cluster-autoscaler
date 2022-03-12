@@ -42,9 +42,7 @@ func main() {
 	// Validate the proxmox setup
 	timeout, tlsConf, template, node, cpuLimit, memLimit, joinCommand := validateInputs()
 	cloudInitConfig, err := os.ReadFile(CLOUD_INIT_PATH)
-	if err != nil {
-		log.Fatalf("Cloud-Init config not found")
-	}
+	ColorPrint(ERROR, "Cloud-Init config not found. Error: %v", err)
 	client := CreateClient(tlsConf, timeout)
 
 	// Validate postgres setup

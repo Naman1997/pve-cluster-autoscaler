@@ -125,9 +125,7 @@ func CreateClient(tlsconf *tls.Config, taskTimeout int) (client *proxmox.Client)
 		c.SetAPIToken(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""))
 		// As test, get the version of the server
 		_, err := c.GetVersion()
-		if err != nil {
-			log.Fatalf("login error: %s", err)
-		}
+		FailError(err)
 	} else {
 		err = c.Login(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""), getValueOf("PM_OTP", ""))
 		FailError(err)

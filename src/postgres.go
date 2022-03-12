@@ -41,13 +41,9 @@ creating the vms table
 func testDBConnection(dbName string, user string, password string) string {
 	connStr := "host=postgres-db-lb port=5432 user=" + user + " dbname=" + dbName + " sslmode=disable password=" + password
 	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		FailError(err)
-	}
+	FailError(err)
 	err = db.Ping()
-	if err != nil {
-		FailError(err)
-	}
+	FailError(err)
 	createTable(db)
 	defer db.Close()
 	return connStr
