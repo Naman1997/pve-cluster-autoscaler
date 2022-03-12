@@ -206,10 +206,14 @@ func main() {
 				}
 			}
 
-			// Drain process
-			// kubectl drain <node-name> --ignore-daemonsets --delete-local-data
-			// kubectl delete node <node-name>
-
+			/* TODO
+			1. Check if proxmox host has enough resources before creating a new VM
+			2. Check if there is a way for to run kubectl api calls from golang
+			3. Delete VM gracefully(if possible)
+				- Check if new node is still attached to cluster
+				- Drain the node [kubectl drain <node-name> --ignore-daemonsets --delete-local-data]
+				- Delete the node from cluster [kubectl delete node <node-name>]
+			*/
 			for {
 				time.Sleep(RETRY_PERIOD * time.Second)
 				ColorPrint(INFO, "Reached TODO point")
