@@ -27,9 +27,12 @@ are exceeded.
 */
 
 const (
-	REPO_LOCATION  = "/root/repo/"
-	INVENTORY_PATH = "/root/hosts"
-	SSH_KEY_PATH   = "/etc/ssh/id_rsa"
+	REPO_LOCATION       = "/root/repo/"
+	INVENTORY_PATH      = "/root/hosts"
+	SSH_KEY_PATH        = "/etc/ssh/id_rsa"
+	CLOUD_INIT_PATH     = "/etc/cloud/cloud-init"
+	RETRY_PERIOD        = 10
+	INTERFACE_SUBSTRING = "eth"
 )
 
 func main() {
@@ -37,8 +40,8 @@ func main() {
 	fRun := true
 
 	// Validate the proxmox setup
-	timeout, tlsConf, template, node, cpuLimit, memLimit := validateInputs()
-	cloudInitConfig, err := os.ReadFile("/etc/cloud/cloud-init")
+	timeout, tlsConf, template, node, cpuLimit, memLimit, joinCommand := validateInputs()
+	cloudInitConfig, err := os.ReadFile(CLOUD_INIT_PATH)
 	if err != nil {
 		log.Fatalf("Cloud-Init config not found")
 	}
@@ -97,9 +100,9 @@ func main() {
 				ColorPrint(INFO, "Ansible Tag and Repo were provided in the configuration: %s", ansibleTag)
 				ColorPrint(INFO, "Attempting to configure this new VM with the ansible config provided.")
 				FailError(CloneRepo(ansibleRepo))
-				repoSubFolder := getValueOf("repoSubFolder", "")
-				if len(repoSubFolder) != 0 {
-					playbookLocation = REPO_LOCATION + repoSubFolder
+				ansiblePlaybook := getValueOf("ansiblePlaybook", "")
+				if len(ansiblePlaybook) != 0 {
+					playbookLocation = REPO_LOCATION + ansiblePlaybook
 					ColorPrint(INFO, "Using path: '%s' for running ansible-playbook", playbookLocation)
 				}
 			}
@@ -116,7 +119,7 @@ func main() {
 			for err != nil {
 				ColorPrint(WARN, "Encountered an error while trying to start the VM: %v", err)
 				ColorPrint(INFO, "Attempting to start the VM again...")
-				time.Sleep(10 * time.Second)
+				time.Sleep(RETRY_PERIOD * time.Second)
 				res, err = StartVM(client, vmr.VmId())
 				ColorPrint(INFO, res)
 			}
@@ -124,7 +127,7 @@ func main() {
 			for err != nil {
 				ColorPrint(WARN, "VM did not start up in the expected time period: %v", err)
 				ColorPrint(INFO, "Attempting to start the VM again...")
-				time.Sleep(10 * time.Second)
+				time.Sleep(RETRY_PERIOD * time.Second)
 				StartVM(client, vmr.VmId())
 				err = WaitForPowerOn(vmr, client)
 			}
@@ -141,20 +144,20 @@ func main() {
 			var ipAddress string
 			for len(ipAddress) == 0 {
 				ColorPrint(WARN, "Waiting for the VM to get an IP Address...")
-				time.Sleep(10 * time.Second)
+				time.Sleep(RETRY_PERIOD * time.Second)
 
 				// Figure out the IP Address assigned to the VM
 				interfaces, err := client.GetVmAgentNetworkInterfaces(vmr)
 				for err != nil {
 					ColorPrint(WARN, "Encountered an error while getting the network interfaces: %v", err)
 					ColorPrint(WARN, "Attempting to get the interfaces again...")
-					time.Sleep(10 * time.Second)
+					time.Sleep(RETRY_PERIOD * time.Second)
 					interfaces, err = client.GetVmAgentNetworkInterfaces(vmr)
 				}
 				for _, interfaceData := range interfaces {
 					for index, ipArrd := range interfaceData.IPAddresses {
 						// Assuming interface name containse eth
-						if strings.Contains(interfaceData.Name, "eth") && len(ipAddress) == 0 {
+						if strings.Contains(interfaceData.Name, INTERFACE_SUBSTRING) && len(ipAddress) == 0 {
 							ipAddress = ipArrd.String()
 						}
 						ColorPrint(INFO, "FOUND IP ADDRESS: %s for INTERFACE: %s on index %d", ipArrd.String(), interfaceData.Name, index)
@@ -164,8 +167,8 @@ func main() {
 			ColorPrint(INFO, "Using %s as the IP Address of the created VM", ipAddress)
 
 			// Run ansible playbook(s)
+			sshUser := getValueOf("sshUser", "admin")
 			if runAnsiblePlaybook {
-				sshUser := getValueOf("sshUser", "admin")
 				generateAnsibleInventory(ipAddress, ansibleTag, config.Name, sshUser)
 				AnsibleGalaxy(REPO_LOCATION + getValueOf("ansibleRequirements", ""))
 				ColorPrint(INFO, "Generating ansible inventory...")
@@ -186,16 +189,33 @@ func main() {
 					_, err = aini.Parse(inventoryReader)
 				}
 
-				// Run the playbook(s) provided
-				AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser)
-
-				for {
-					time.Sleep(10 * time.Second)
-					ColorPrint(INFO, "Reached TODO point")
+				// Run the playbook provided
+				AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser, joinCommand)
+			} else {
+				err = sendCommands(sshUser, ipAddress, joinCommand)
+				if err != nil {
+					ColorPrint(WARN, "Invalid Join Command: Expired token?")
+					ColorPrint(WARN, "Node with IP: '%s' and ID: '%d' was unable to join the cluster!", ipAddress, vmr.VmId())
+					ColorPrint(WARN, "Deleting the VM with IP: '%s' and ID: '%d'", ipAddress, vmr.VmId())
+					res, err = DestroyVM(client, vmr.VmId())
+					for err != nil {
+						ColorPrint(WARN, "%v", err)
+						res, err = DestroyVM(client, vmr.VmId())
+					}
+					ColorPrint(INFO, res)
 				}
 			}
+
+			// Drain process
+			// kubectl drain <node-name> --ignore-daemonsets --delete-local-data
+			// kubectl delete node <node-name>
+
+			for {
+				time.Sleep(RETRY_PERIOD * time.Second)
+				ColorPrint(INFO, "Reached TODO point")
+			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(RETRY_PERIOD * time.Second)
 	}
 }
 
@@ -204,7 +224,7 @@ validateInputs validates that all
 required inputs are in place and
  are using the correct formats.
 */
-func validateInputs() (int, *tls.Config, string, string, int, int) {
+func validateInputs() (int, *tls.Config, string, string, int, int, string) {
 	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
 	FailError(err)
 	*proxmox.Debug, err = strconv.ParseBool(getValueOf("debug", "false"))
@@ -235,5 +255,9 @@ func validateInputs() (int, *tls.Config, string, string, int, int) {
 	if !insecure {
 		tlsconf = nil
 	}
-	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit
+	joinCommand := getValueOf("joinCommand", "")
+	if len(joinCommand) == 0 {
+		log.Fatal("joinCommand not specified in config!")
+	}
+	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit, joinCommand
 }

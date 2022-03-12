@@ -50,14 +50,14 @@ func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, no
 }
 
 //Deletes an existing VM using its vmid
-func DestroyVM(client *proxmox.Client, vmid int) {
+func DestroyVM(client *proxmox.Client, vmid int) (string, error) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
-	ColorPrint(INFO, jbody)
-	FailError(err)
+	if err != nil {
+		return jbody, err
+	}
 	jbody, err = client.DeleteVm(vmr)
-	FailError(err)
-	ColorPrint(INFO, jbody)
+	return jbody, err
 }
 
 //Starts an existing VM using its vmid
