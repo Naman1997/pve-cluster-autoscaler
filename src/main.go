@@ -13,6 +13,7 @@ import (
 	"github.com/Telmate/proxmox-api-go/proxmox"
 	"github.com/relex/aini"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -42,7 +43,9 @@ func main() {
 	// Validate the proxmox setup
 	timeout, tlsConf, template, node, cpuLimit, memLimit, joinCommand := validateInputs()
 	cloudInitConfig, err := os.ReadFile(CLOUD_INIT_PATH)
-	ColorPrint(ERROR, "Cloud-Init config not found. Error: %v", err)
+	if err != nil {
+		ColorPrint(ERROR, "Cloud-Init config not found. Error: %v", err)
+	}
 	client := CreateClient(tlsConf, timeout)
 
 	// Validate postgres setup
@@ -188,7 +191,24 @@ func main() {
 				}
 
 				// Run the playbook provided
-				AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser, joinCommand)
+				err = AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser, joinCommand)
+				// Retry once on failure
+				if err != nil {
+					ColorPrint(WARN, "An error occoured while running the ansible playbook: %v", err)
+					ColorPrint(WARN, "Retrying once more to run the ansible playbook....")
+					AnsiblePlaybook(playbookLocation, getValueOf("ansibleExtraVarsFile", ""), sshUser, joinCommand)
+				}
+				if err != nil {
+					ColorPrint(WARN, "Errors encountered while running the playbook: %v", err)
+					ColorPrint(WARN, "Node with IP: '%s' and ID: '%d' was unable to join the cluster!", ipAddress, vmr.VmId())
+					ColorPrint(WARN, "Deleting the VM with IP: '%s' and ID: '%d'", ipAddress, vmr.VmId())
+					res, err = DestroyVM(client, vmr.VmId())
+					for err != nil {
+						ColorPrint(WARN, "%v", err)
+						res, err = DestroyVM(client, vmr.VmId())
+					}
+					ColorPrint(INFO, res)
+				}
 			} else {
 				err = sendCommands(sshUser, ipAddress, joinCommand)
 				if err != nil {
@@ -204,11 +224,26 @@ func main() {
 				}
 			}
 
+			// Attempt to add worker role the newly created node
+			payload := `{"metadata":{"labels":{"kubernetes.io/role":"worker"}}}`
+			response, err := clientset.
+				CoreV1().
+				Nodes().
+				Patch(context.TODO(),
+					config.Name,
+					types.MergePatchType,
+					[]byte(payload),
+					metav1.PatchOptions{FieldManager: "kubectl-label"})
+
+			ColorPrint(INFO, response.String())
+			ColorPrint(WARN, "Errors for labeling new node: %v", err)
+
 			// TODOs : https://github.com/users/Naman1997/projects/6
 			for {
 				time.Sleep(RETRY_PERIOD * time.Second)
 				ColorPrint(INFO, "Reached TODO point")
 			}
+
 		}
 		time.Sleep(RETRY_PERIOD * time.Second)
 	}
