@@ -38,7 +38,7 @@ using the playbook filepath passed
 Expects ansible binary to be present
 in PATH
 */
-func AnsiblePlaybook(playbook string, vars string, user string, joinCommand string) {
+func AnsiblePlaybook(playbook string, vars string, user string, joinCommand string) error {
 	cmd0 := "ansible-playbook"
 	cmd1 := strings.Trim(playbook, "\n")
 	cmd2 := "-i"
@@ -79,8 +79,7 @@ func AnsiblePlaybook(playbook string, vars string, user string, joinCommand stri
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Ignore if any errors occour
-	cmd.Run()
+	return cmd.Run()
 }
 
 func generateAnsibleInventory(ipAddr string, ansibleTag string, hostName string, sshUser string) {
