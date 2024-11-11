@@ -43,7 +43,7 @@ func main() {
 	// Validate the proxmox setup
 	timeout, tlsConf, template, node, cpuLimit, memLimit, joinCommand := validateInputs()
 	cloudInitConfig, err := os.ReadFile(CLOUD_INIT_PATH)
-  
+
 	if err != nil {
 		ColorPrint(ERROR, "Cloud-Init config not found. Error: %v", err)
 	}
