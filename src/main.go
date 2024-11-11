@@ -43,6 +43,7 @@ func main() {
 	// Validate the proxmox setup
 	timeout, tlsConf, template, node, cpuLimit, memLimit, joinCommand := validateInputs()
 	cloudInitConfig, err := os.ReadFile(CLOUD_INIT_PATH)
+  
 	if err != nil {
 		ColorPrint(ERROR, "Cloud-Init config not found. Error: %v", err)
 	}
@@ -81,7 +82,6 @@ func main() {
 
 			overall_cpu_percentage += float32(used_cpu / total_cpu)
 			overall_mem_percentage += float32(used_mem.MilliValue() / total_mem.MilliValue())
-
 		}
 
 		overall_cpu_percentage = overall_cpu_percentage / float32(nodes.Size())
@@ -290,4 +290,35 @@ func validateInputs() (int, *tls.Config, string, string, int, int, string) {
 		log.Fatal("joinCommand not specified in config!")
 	}
 	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit, joinCommand
+}
+
+/*
+validateInputs validates that all
+required inputs are in place and
+ are using the correct formats.
+*/
+func validateInputs() (int, *tls.Config, string, string, int, int) {
+	insecure, err := strconv.ParseBool(getValueOf("insecure", "false"))
+	FailError(err)
+	*proxmox.Debug, err = strconv.ParseBool(getValueOf("debug", "false"))
+	FailError(err)
+	taskTimeout, err := strconv.Atoi(getValueOf("taskTimeout", "300"))
+	FailError(err)
+	memoryLimit, err := strconv.Atoi(getValueOf("memoryLimit", ""))
+	FailError(err)
+	cpuLimit, err := strconv.Atoi(getValueOf("cpuLimit", ""))
+	FailError(err)
+	node := getValueOf("nodeName", "")
+	if node == "" {
+		log.Fatal("Node not specified!")
+	}
+	template := getValueOf("templateName", "")
+	if template == "" {
+		log.Fatal("Template not specified!")
+	}
+	tlsconf := &tls.Config{InsecureSkipVerify: true}
+	if !insecure {
+		tlsconf = nil
+	}
+	return taskTimeout, tlsconf, template, node, cpuLimit, memoryLimit
 }
