@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/tls"
 	"errors"
 	"log"
 	"time"
@@ -56,14 +55,16 @@ Destroy function stops and
 deletes am existing VM
 using its vmid
 */
-func Destroy(client *proxmox.Client, vmid int) {
+func DestroyVM(client *proxmox.Client, vmid int) (string, error) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
+	if err != nil {
+		return jbody, err
+	}
 	ColorPrint(INFO, jbody)
-	FailError(err)
 	jbody, err = client.DeleteVm(vmr)
-	FailError(err)
 	ColorPrint(INFO, jbody)
+	return jbody, err
 }
 
 //Starts an existing VM using its vmid
@@ -114,27 +115,4 @@ func WaitForQemuAgent(vmr *proxmox.VmRef, client *proxmox.Client) (err error) {
 		time.Sleep(5 * time.Second)
 	}
 	return errors.New("qemu agent did not start within wait time")
-}
-
-/*
-CreateClient is used to create
-a new client using the provided
-tls config and timeout params and
-the credentials provided to the pod
-via a secret as env vars.
-Proxy is currently not being supported.
-*/
-func CreateClient(tlsconf *tls.Config, taskTimeout int) (client *proxmox.Client) {
-	c, err := proxmox.NewClient(getValueOf("PM_API_URL", ""), nil, tlsconf, "", taskTimeout)
-	FailError(err)
-	if userRequiresAPIToken(getValueOf("PM_USER", "")) {
-		c.SetAPIToken(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""))
-		// As test, get the version of the server
-		_, err := c.GetVersion()
-		FailError(err)
-	} else {
-		err = c.Login(getValueOf("PM_USER", ""), getValueOf("PM_PASS", ""), getValueOf("PM_OTP", ""))
-		FailError(err)
-	}
-	return c
 }
