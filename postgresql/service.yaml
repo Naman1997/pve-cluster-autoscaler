@@ -1,0 +1,15 @@
+# PostgreSQL StatefulSet Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db-lb
+spec:
+  selector:
+    app: postgresql-db
+    task: autoscaler
+  type: LoadBalancer
+  ports:
+  - name: tcp-postgresql-db
+    port: 5432
+    protocol: TCP
+    targetPort: 5432
