@@ -32,11 +32,11 @@ func ColorPrint(colorText string, text string, option ...interface{}) {
 		log.Println()
 		os.Exit(0)
 	} else if colorText == INFO {
-		log.Print(color.GreenString(colorText))
+		log.Printf(color.GreenString(colorText))
 	} else if colorText == WARN {
-		log.Print(color.YellowString(colorText))
+		log.Printf(color.YellowString(colorText))
 	} else if colorText == INPUT {
-		log.Print(color.BlueString(colorText))
+		log.Printf(color.BlueString(colorText))
 	} else {
 		log.Printf(colorText+text, option...)
 		log.Println()

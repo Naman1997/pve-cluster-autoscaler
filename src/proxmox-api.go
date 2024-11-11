@@ -11,6 +11,7 @@ import (
 )
 
 /*
+
 Creates a new clone of the provided template and
 configures it according to cloudInitConfig
 */
@@ -20,6 +21,7 @@ func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, no
 		// Enable qemu agent - needed for ansible
 		config.Agent = 1
 	}
+
 	FailError(err)
 	log.Println("Looking for template: " + template)
 	sourceVmrs, err := client.GetVmRefsByName(template)
@@ -49,15 +51,19 @@ func CloneVM(client *proxmox.Client, template string, cloudInitConfig []byte, no
 	return config, vmr
 }
 
-//Deletes an existing VM using its vmid
-func DestroyVM(client *proxmox.Client, vmid int) (string, error) {
+/*
+Destroy function stops and
+deletes am existing VM
+using its vmid
+*/
+func Destroy(client *proxmox.Client, vmid int) {
 	vmr := proxmox.NewVmRef(vmid)
 	jbody, err := client.StopVm(vmr)
-	if err != nil {
-		return jbody, err
-	}
+	ColorPrint(INFO, jbody)
+	FailError(err)
 	jbody, err = client.DeleteVm(vmr)
-	return jbody, err
+	FailError(err)
+	ColorPrint(INFO, jbody)
 }
 
 //Starts an existing VM using its vmid
